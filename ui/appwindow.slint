@@ -85,6 +85,9 @@ component MetricCard inherits Rectangle {
     border-radius: 10px;
     border-width: 1px;
     border-color: #2a3040;
+    // 令所有卡片首选宽度一致（0 → 完全按 GridLayout 均等 stretch 分配），
+    // 避免因内容宽度不同导致两侧列宽不一致
+    preferred-width: 0px;
 
     VerticalBox {
         padding: 14px;

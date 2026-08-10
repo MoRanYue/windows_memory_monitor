@@ -1,3 +1,6 @@
+// 使用 Windows GUI 子系统，避免启动时弹出控制台窗口
+#![windows_subsystem = "windows"]
+
 slint::include_modules!();
 
 use std::cell::RefCell;
