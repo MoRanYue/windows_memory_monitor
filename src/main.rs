@@ -3,7 +3,10 @@
 
 slint::include_modules!();
 
+mod d3dkmt;
+
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -11,11 +14,11 @@ use anyhow::{Context, Result};
 use slint::{ComponentHandle, SharedString, Timer, TimerMode, VecModel};
 use thiserror::Error;
 use windows::core::PCWSTR;
+use windows::Win32::Foundation::LUID;
 use windows::Win32::Graphics::DXCore::{
     DXCoreCreateAdapterFactory, IDXCoreAdapterFactory, IDXCoreAdapterList, IDXCoreAdapter,
-    AdapterMemoryBudget, DriverDescription, DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS,
-    DXCoreAdapterMemoryBudget, DXCoreAdapterMemoryBudgetNodeSegmentGroup, IsHardware, Local,
-    NonLocal,
+    DedicatedAdapterMemory, DriverDescription, DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS,
+    InstanceLuid, IsHardware, SharedSystemMemory,
 };
 use windows::Win32::System::Performance::{
     PdhAddEnglishCounterW, PdhCollectQueryData, PdhGetFormattedCounterValue, PdhOpenQueryW,
@@ -29,6 +32,59 @@ use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTAT
 use windows::Win32::System::Threading::GetCurrentProcess;
 
 const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+
+const HISTORY_LEN: usize = 40;
+
+/// 各监测指标的历史值缓冲（单位：GB），用于直方图显示
+struct Histories {
+    phys: VecDeque<f32>,
+    gpu: VecDeque<f32>,
+    compressed: VecDeque<f32>,
+    commit: VecDeque<f32>,
+    cache: VecDeque<f32>,
+    pagefile: VecDeque<f32>,
+    working: VecDeque<f32>,
+    private: VecDeque<f32>,
+}
+impl Default for Histories {
+    fn default() -> Self {
+        Self {
+            phys: VecDeque::from([0.0; HISTORY_LEN]),
+            gpu: VecDeque::from([0.0; HISTORY_LEN]),
+            compressed: VecDeque::from([0.0; HISTORY_LEN]),
+            commit: VecDeque::from([0.0; HISTORY_LEN]),
+            cache: VecDeque::from([0.0; HISTORY_LEN]),
+            pagefile: VecDeque::from([0.0; HISTORY_LEN]),
+            working: VecDeque::from([0.0; HISTORY_LEN]),
+            private: VecDeque::from([0.0; HISTORY_LEN])
+        }
+    }
+}
+
+/// 有最大值卡片：直方图高度按「值/最大值」百分比计算（0~100）
+fn push_history_ratio(history: &mut VecDeque<f32>, value: f32, total: f32) -> slint::VecModel<f32> {
+    let pct = if total > 0.0 { (value / total * 100.0).min(100.0) } else { 0.0 };
+    history.push_back(pct);
+    if history.len() > HISTORY_LEN {
+        history.pop_front();
+    }
+    slint::VecModel::from(history.iter().copied().collect::<Vec<_>>())
+}
+
+/// 无最大值卡片：按历史窗口内最大值归一化到 0~100（相对变化）
+fn push_history_norm(history: &mut VecDeque<f32>, value_gb: f32) -> slint::VecModel<f32> {
+    history.push_back(value_gb);
+    if history.len() > HISTORY_LEN {
+        history.pop_front();
+    }
+    let max = history.iter().copied().fold(0.0f32, f32::max);
+    let normalized: Vec<f32> = if max > 0.0 {
+        history.iter().map(|&v| ((v / max) * 100.0).min(100.0)).collect()
+    } else {
+        history.iter().map(|_| 0.0).collect()
+    };
+    slint::VecModel::from(normalized)
+}
 
 /// 内存采集相关的自定义错误
 #[derive(Debug, Error)]
@@ -258,58 +314,84 @@ fn read_gpus() -> Vec<GpuInfo> {
                 format!("GPU {}", i)
             };
 
-            // 查询专用显存（Local 段）与共享显存（NonLocal 段）
-            let query_budget = |segment: u32| -> Option<(u64, u64)> {
-                if !adapter.IsQueryStateSupported(AdapterMemoryBudget) {
-                    return None;
-                }
-                let input = DXCoreAdapterMemoryBudgetNodeSegmentGroup {
-                    nodeIndex: 0,
-                    segmentGroup: windows::Win32::Graphics::DXCore::DXCoreSegmentGroup(segment),
-                };
-                let mut output = DXCoreAdapterMemoryBudget::default();
-                let ok = adapter
-                    .QueryState(
-                        AdapterMemoryBudget,
-                        std::mem::size_of::<DXCoreAdapterMemoryBudgetNodeSegmentGroup>(),
-                        Some(&input as *const _ as *const core::ffi::c_void),
-                        std::mem::size_of::<DXCoreAdapterMemoryBudget>(),
-                        &mut output as *mut _ as *mut core::ffi::c_void,
-                    )
-                    .is_ok();
-                if ok {
-                    Some((output.currentUsage, output.budget))
+            // 适配器 LUID：用于 D3DKMT 查询各内存段的实际已提交显存
+            let mut luid = LUID::default();
+            if adapter.IsPropertySupported(InstanceLuid) {
+                let _ = adapter.GetProperty(
+                    InstanceLuid,
+                    std::mem::size_of::<LUID>(),
+                    &mut luid as *mut LUID as *mut _,
+                );
+            }
+
+            // 显存总量：DXCore 属性（专用显存 / 共享系统内存）
+            let read_u64_prop = |prop: windows::Win32::Graphics::DXCore::DXCoreAdapterProperty| {
+                if adapter.IsPropertySupported(prop) {
+                    let mut v: u64 = 0;
+                    if adapter
+                        .GetProperty(prop, 8, &mut v as *mut u64 as *mut _)
+                        .is_ok()
+                    {
+                        Some(v)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
             };
+            let dedicated_total = read_u64_prop(DedicatedAdapterMemory);
+            let shared_total = read_u64_prop(SharedSystemMemory);
 
-            let (dedicated_text, dedicated_usage) = match query_budget(Local.0) {
-                Some((usage_bytes, budget_bytes)) if budget_bytes > 0 => {
+            // 段级显存：D3DKMTQueryStatistics（常驻 + 已提交）
+            let seg = d3dkmt::query_segment_usage(luid);
+            let fmt = |bytes: u64| -> String {
+                if bytes == 0 {
+                    "0.0 GB".to_string()
+                } else {
+                    format!("{:.1} GB", bytes as f64 / GB)
+                }
+            };
+
+            // 专用显存：总量 / 常驻 / 已提交（任务管理器显示的是「常驻」）
+            let (dedicated_line, dedicated_usage) = match (dedicated_total, seg) {
+                (Some(total), Some(s)) if total > 0 => {
                     let usage =
-                        ((usage_bytes as f64 / budget_bytes as f64 * 100.0).min(100.0)) as f32;
+                        (s.dedicated_resident as f64 / total as f64 * 100.0).min(100.0) as f32;
                     (
                         format!(
-                            "{:.1} / {:.1} GB",
-                            usage_bytes as f64 / GB,
-                            budget_bytes as f64 / GB
+                            "总量 {} · 常驻 {} · 提交 {}",
+                            fmt(total),
+                            fmt(s.dedicated_resident),
+                            fmt(s.dedicated_committed)
                         ),
                         usage,
                     )
                 }
+                (Some(total), _) if total > 0 => {
+                    (format!("总量 {} · 常驻 -- · 提交 --", fmt(total)), 0.0)
+                }
                 _ => ("N/A".to_string(), 0.0),
             };
 
-            let shared_text = match query_budget(NonLocal.0) {
-                Some((usage_bytes, _)) => format!("{:.1} GB", usage_bytes as f64 / GB),
-                None => "N/A".to_string(),
+            // 共享显存：总量 / 常驻 / 已提交
+            let shared_line = match (shared_total, seg) {
+                (Some(total), Some(s)) if total > 0 => format!(
+                    "总量 {} · 常驻 {} · 提交 {}",
+                    fmt(total),
+                    fmt(s.shared_resident),
+                    fmt(s.shared_committed)
+                ),
+                (Some(total), _) if total > 0 => format!("总量 {} · 常驻 -- · 提交 --", fmt(total)),
+                _ => "N/A".to_string(),
             };
 
             result.push(GpuInfo {
                 name: SharedString::from(name),
-                dedicated_used_text: SharedString::from(dedicated_text),
                 dedicated_usage,
-                shared_used_text: SharedString::from(shared_text),
+                dedicated_line: SharedString::from(dedicated_line),
+                shared_line: SharedString::from(shared_line),
+                dedicated_history: slint::ModelRc::new(slint::VecModel::from(Vec::<f32>::new())),
             });
         }
     }
@@ -317,7 +399,7 @@ fn read_gpus() -> Vec<GpuInfo> {
 }
 
 /// 将当前系统状态刷新到 UI
-fn refresh_ui(ui: &AppWindow, compressed: &mut CompressedMemoryReader) {
+fn refresh_ui(ui: &AppWindow, compressed: &mut CompressedMemoryReader, histories: &mut Histories) {
     // 物理内存
     if let Ok(m) = read_memory_status() {
         let total = m.ullTotalPhys;
@@ -332,11 +414,20 @@ fn refresh_ui(ui: &AppWindow, compressed: &mut CompressedMemoryReader) {
         ui.set_phys_total_text(SharedString::from(format_gb(total)));
         ui.set_phys_avail_text(SharedString::from(format_gb(avail)));
         ui.set_phys_usage(usage as f32);
+        ui.set_phys_history(slint::ModelRc::new(push_history_ratio(
+            &mut histories.phys,
+            used as f32,
+            total as f32,
+        )));
     }
 
     // 已压缩内存
     if let Ok(bytes) = compressed.read_bytes() {
         ui.set_compressed_text(SharedString::from(format_gb(bytes)));
+        ui.set_compressed_history(slint::ModelRc::new(push_history_norm(
+            &mut histories.compressed,
+            (bytes as f64 / GB) as f32,
+        )));
     }
 
     // 性能信息：提交内存 / 系统缓存
@@ -359,6 +450,15 @@ fn refresh_ui(ui: &AppWindow, compressed: &mut CompressedMemoryReader) {
         )));
         ui.set_commit_usage(commit_usage as f32);
         ui.set_cache_text(SharedString::from(format_gb(cache_bytes)));
+        ui.set_commit_history(slint::ModelRc::new(push_history_ratio(
+            &mut histories.commit,
+            commit_total as f32,
+            commit_limit as f32,
+        )));
+        ui.set_cache_history(slint::ModelRc::new(push_history_norm(
+            &mut histories.cache,
+            (cache_bytes as f64 / GB) as f32,
+        )));
     }
 
     // 页面文件（虚拟内存）：已用 / 总量（字节）
@@ -376,16 +476,37 @@ fn refresh_ui(ui: &AppWindow, compressed: &mut CompressedMemoryReader) {
             format_gb(total)
         )));
         ui.set_virtual_usage(usage as f32);
+        ui.set_pagefile_history(slint::ModelRc::new(push_history_ratio(
+            &mut histories.pagefile,
+            used as f32,
+            total as f32,
+        )));
     }
 
     // 本进程内存
     if let Ok(c) = read_process_memory() {
         ui.set_proc_working_text(SharedString::from(format_gb(c.WorkingSetSize as u64)));
         ui.set_proc_private_text(SharedString::from(format_gb(c.PrivateUsage as u64)));
+        ui.set_working_history(slint::ModelRc::new(push_history_norm(
+            &mut histories.working,
+            (c.WorkingSetSize as u64 as f64 / GB) as f32,
+        )));
+        ui.set_private_history(slint::ModelRc::new(push_history_norm(
+            &mut histories.private,
+            (c.PrivateUsage as u64 as f64 / GB) as f32,
+        )));
     }
 
     // 显存
-    let gpus = read_gpus();
+    let mut gpus = read_gpus();
+    // 记录 GPU 专用显存使用率历史（相对 100%）
+    if let Some(g) = gpus.first_mut() {
+        g.dedicated_history = slint::ModelRc::new(push_history_ratio(
+            &mut histories.gpu,
+            g.dedicated_usage,
+            100.0,
+        ));
+    }
     let model = VecModel::from(gpus);
     ui.set_gpus(slint::ModelRc::new(model));
 }
@@ -395,18 +516,28 @@ fn main() -> Result<()> {
 
     // 首次立即刷新
     let compressed = Rc::new(RefCell::new(CompressedMemoryReader::new()));
-    refresh_ui(&ui, &mut compressed.borrow_mut());
+    let histories = Rc::new(RefCell::new(Histories::default()));
+    refresh_ui(
+        &ui,
+        &mut compressed.borrow_mut(),
+        &mut histories.borrow_mut(),
+    );
 
-    // 周期刷新（每秒），复用同一个压缩内存读取器
+    // 周期刷新（每秒），复用同一个压缩内存读取器与历史缓冲
     let weak = ui.as_weak();
     let compressed_for_timer = Rc::clone(&compressed);
+    let histories_for_timer = Rc::clone(&histories);
     let timer = Timer::default();
     timer.start(
         TimerMode::Repeated,
         Duration::from_secs(1),
         move || {
             if let Some(ui) = weak.upgrade() {
-                refresh_ui(&ui, &mut compressed_for_timer.borrow_mut());
+                refresh_ui(
+                    &ui,
+                    &mut compressed_for_timer.borrow_mut(),
+                    &mut histories_for_timer.borrow_mut(),
+                );
             }
         },
     );

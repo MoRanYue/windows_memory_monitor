@@ -3,9 +3,10 @@ import { VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
 
 export struct GpuInfo {
     name: string,
-    dedicated-used-text: string,
     dedicated-usage: float,
-    shared-used-text: string,
+    dedicated-line: string,
+    shared-line: string,
+    dedicated-history: [float],
 }
 
 // 自定义进度条（从左到右填充）
@@ -22,6 +23,32 @@ component PBar inherits Rectangle {
         height: parent.height;
         background: #37d3a3;
         border-radius: 5px;
+    }
+}
+
+// 简易直方图：显示最近一段时间数值变化（值 0~100，自底向上绘制竖条）
+component Histogram {
+    in property <[float]> values: [];
+    in property <length> bar-spacing: 3px;
+
+    Rectangle {
+        background: #1f2530;
+        border-radius: 4px;
+        clip: true;
+
+        // 竖条宽度按容器宽度与条数动态计算，使其铺满容器宽度（左右各留 3px）
+        private property <length> bar-width:
+            (self.width - 6px - max(0, values.length - 1) * bar-spacing) / max(1, values.length);
+
+        for value[index] in values: Rectangle {
+            x: 3px + index * (bar-width + bar-spacing);
+            y: parent.height - 3px - self.height;
+            width: bar-width;
+            // 最大高度留出上下各 3px 边距，避免最高竖条顶部超出轨道被裁剪
+            height: max(2px, (parent.height - 6px) * value / 100);
+            background: #37d3a3;
+            border-radius: 3px;
+        }
     }
 }
 
@@ -81,6 +108,7 @@ component MetricCard inherits Rectangle {
     in property <string> sub-text: "";
     in property <float> usage: 0;
     in property <bool> show-progress: false;
+    in property <[float]> history: [];
     background: #1a1f2b;
     border-radius: 10px;
     border-width: 1px;
@@ -88,6 +116,9 @@ component MetricCard inherits Rectangle {
     // 令所有卡片首选宽度一致（0 → 完全按 GridLayout 均等 stretch 分配），
     // 避免因内容宽度不同导致两侧列宽不一致
     preferred-width: 0px;
+    // 固定高度：内容 + 直方图最大约 146px，150px 预留余量；
+    // 显式 height 使卡片在 GridLayout 中不再随行高拉伸
+    height: 150px;
 
     VerticalBox {
         padding: 14px;
@@ -112,6 +143,10 @@ component MetricCard inherits Rectangle {
         if show-progress: PBar {
             percent: usage;
             height: 8px;
+        }
+        Histogram {
+            values: history;
+            height: 30px;
         }
     }
 }
@@ -145,6 +180,15 @@ export component AppWindow inherits Window {
 
     // ======== 显存 ========
     in-out property <[GpuInfo]> gpus: [];
+
+    // ======== 直方图历史数据 ========
+    in-out property <[float]> phys-history: [];
+    in-out property <[float]> compressed-history: [];
+    in-out property <[float]> commit-history: [];
+    in-out property <[float]> cache-history: [];
+    in-out property <[float]> pagefile-history: [];
+    in-out property <[float]> working-history: [];
+    in-out property <[float]> private-history: [];
 
     ScrollView {
         // 内含布局时，viewport 尺寸默认等于布局的最小尺寸，内容超出可视区即可滚动
@@ -181,47 +225,56 @@ export component AppWindow inherits Window {
 
             // 物理内存大卡片
             Rectangle {
-                height: 180px;
+                height: 220px;
                 background: #1a1f2b;
                 border-radius: 12px;
                 border-width: 1px;
                 border-color: #2a3040;
 
-                HorizontalBox {
-                    padding: 20px;
-                    spacing: 28px;
+                VerticalBox {
+                    padding: 16px;
+                    spacing: 12px;
 
-                    Rectangle {
-                        width: 130px;
-                        height: 130px;
-                        background: transparent;
-                        CircularProgress {
-                            progress: phys-usage / 100;
+                    HorizontalBox {
+                        spacing: 28px;
+
+                        Rectangle {
+                            width: 130px;
+                            height: 130px;
+                            background: transparent;
+                            CircularProgress {
+                                progress: phys-usage / 100;
+                            }
+                        }
+
+                        VerticalBox {
+                            spacing: 8px;
+                            Text {
+                                text: "物理内存";
+                                color: #8b95a7;
+                                font-size: 14px;
+                            }
+                            Text {
+                                text: "已用 " + phys-used-text + " / 总量 " + phys-total-text;
+                                color: #e8ecf4;
+                                font-size: 26px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "可用 " + phys-avail-text;
+                                color: #8b95a7;
+                                font-size: 15px;
+                            }
+                            PBar {
+                                percent: phys-usage;
+                                height: 12px;
+                            }
                         }
                     }
 
-                    VerticalBox {
-                        spacing: 8px;
-                        Text {
-                            text: "物理内存";
-                            color: #8b95a7;
-                            font-size: 14px;
-                        }
-                        Text {
-                            text: "已用 " + phys-used-text + " / 总量 " + phys-total-text;
-                            color: #e8ecf4;
-                            font-size: 26px;
-                            font-weight: 700;
-                        }
-                        Text {
-                            text: "可用 " + phys-avail-text;
-                            color: #8b95a7;
-                            font-size: 15px;
-                        }
-                        PBar {
-                            percent: phys-usage;
-                            height: 12px;
-                        }
+                    Histogram {
+                        values: phys-history;
+                        height: 36px;
                     }
                 }
             }
@@ -235,6 +288,7 @@ export component AppWindow inherits Window {
                         title: "已压缩内存";
                         value-text: compressed-text;
                         sub-text: "Memory Compression";
+                        history: compressed-history;
                     }
                     MetricCard {
                         title: "提交内存";
@@ -242,6 +296,7 @@ export component AppWindow inherits Window {
                         sub-text: "Commit Charge";
                         usage: commit-usage;
                         show-progress: true;
+                        history: commit-history;
                     }
                 }
                 Row {
@@ -249,6 +304,7 @@ export component AppWindow inherits Window {
                         title: "系统缓存";
                         value-text: cache-text;
                         sub-text: "System Cache";
+                        history: cache-history;
                     }
                     MetricCard {
                         title: "页面文件";
@@ -256,6 +312,7 @@ export component AppWindow inherits Window {
                         sub-text: "Page File";
                         usage: virtual-usage;
                         show-progress: true;
+                        history: pagefile-history;
                     }
                 }
                 Row {
@@ -263,11 +320,13 @@ export component AppWindow inherits Window {
                         title: "本进程工作集";
                         value-text: proc-working-text;
                         sub-text: "Working Set";
+                        history: working-history;
                     }
                     MetricCard {
                         title: "本进程私有内存";
                         value-text: proc-private-text;
                         sub-text: "Private Memory";
+                        history: private-history;
                     }
                 }
             }
@@ -278,6 +337,8 @@ export component AppWindow inherits Window {
                 border-radius: 12px;
                 border-width: 1px;
                 border-color: #2a3040;
+                // 不随父布局纵向拉伸，保持内容尺寸并置顶（避免内容被推到卡片底部）
+                vertical-stretch: 0;
 
                 VerticalBox {
                     padding: 14px;
@@ -292,12 +353,12 @@ export component AppWindow inherits Window {
                     VerticalBox {
                         spacing: 10px;
                         for gpu in gpus: Rectangle {
-                            height: 60px;
+                            height: 140px;
                             border-radius: 8px;
                             background: #242a38;
 
                             VerticalBox {
-                                padding: 10px;
+                                padding: 12px;
                                 spacing: 6px;
                                 Text {
                                     text: gpu.name;
@@ -310,9 +371,18 @@ export component AppWindow inherits Window {
                                     height: 8px;
                                 }
                                 Text {
-                                    text: "专用显存 " + gpu.dedicated-used-text + " · 共享 " + gpu.shared-used-text;
+                                    text: "专用显存 " + gpu.dedicated-line;
                                     color: #8b95a7;
                                     font-size: 12px;
+                                }
+                                Text {
+                                    text: "共享显存 " + gpu.shared-line;
+                                    color: #8b95a7;
+                                    font-size: 12px;
+                                }
+                                Histogram {
+                                    values: gpu.dedicated-history;
+                                    height: 26px;
                                 }
                             }
                         }
