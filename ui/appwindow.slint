@@ -115,6 +115,7 @@ component MetricCard inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "Windows 内存监控器";
+    icon: @image-url("../assets/logo.png");
     preferred-width: 900px;
     preferred-height: 720px;
     background: #10131a;
@@ -148,173 +149,173 @@ export component AppWindow inherits Window {
             padding: 20px;
             spacing: 16px;
 
-        // 标题栏
-        Rectangle {
-            height: 46px;
-            HorizontalBox {
-                spacing: 12px;
-                Rectangle {
-                    width: 34px;
-                    height: 34px;
-                    border-radius: 8px;
-                    background: #37d3a3;
-                }
-                Text {
-                    text: "Windows 内存监控器";
-                    font-size: 24px;
-                    font-weight: 800;
-                    color: #e8ecf4;
-                    vertical-alignment: center;
-                }
-                // Text {
-                //     text: "实时 · 精确 · 全维度";
-                //     font-size: 13px;
-                //     color: #5c6b84;
-                //     vertical-alignment: center;
-                // }
-            }
-        }
-
-        // 物理内存大卡片
-        Rectangle {
-            height: 180px;
-            background: #1a1f2b;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: #2a3040;
-
-            HorizontalBox {
-                padding: 20px;
-                spacing: 28px;
-
-                Rectangle {
-                    width: 130px;
-                    height: 130px;
-                    background: transparent;
-                    CircularProgress {
-                        progress: phys-usage / 100;
-                    }
-                }
-
-                VerticalBox {
-                    spacing: 8px;
-                    Text {
-                        text: "物理内存";
-                        color: #8b95a7;
-                        font-size: 14px;
-                    }
-                    Text {
-                        text: "已用 " + phys-used-text + " / 总量 " + phys-total-text;
-                        color: #e8ecf4;
-                        font-size: 26px;
-                        font-weight: 700;
-                    }
-                    Text {
-                        text: "可用 " + phys-avail-text;
-                        color: #8b95a7;
-                        font-size: 15px;
-                    }
-                    PBar {
-                        percent: phys-usage;
-                        height: 12px;
-                    }
-                }
-            }
-        }
-
-        // 指标网格
-        GridLayout {
-            spacing: 16px;
-
-            Row {
-                MetricCard {
-                    title: "已压缩内存";
-                    value-text: compressed-text;
-                    sub-text: "Memory Compression";
-                }
-                MetricCard {
-                    title: "提交内存";
-                    value-text: commit-text;
-                    sub-text: "Commit Charge";
-                    usage: commit-usage;
-                    show-progress: true;
-                }
-            }
-            Row {
-                MetricCard {
-                    title: "系统缓存";
-                    value-text: cache-text;
-                    sub-text: "System Cache";
-                }
-                MetricCard {
-                    title: "页面文件";
-                    value-text: virtual-text;
-                    sub-text: "Page File";
-                    usage: virtual-usage;
-                    show-progress: true;
-                }
-            }
-            Row {
-                MetricCard {
-                    title: "本进程工作集";
-                    value-text: proc-working-text;
-                    sub-text: "Working Set";
-                }
-                MetricCard {
-                    title: "本进程私有内存";
-                    value-text: proc-private-text;
-                    sub-text: "Private Memory";
-                }
-            }
-        }
-
-        // 显存卡片
-        Rectangle {
-            background: #1a1f2b;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: #2a3040;
-
-            VerticalBox {
-                padding: 14px;
-                spacing: 6px;
-
-                Text {
-                    text: "显存 (GPU)";
-                    color: #8b95a7;
-                    font-size: 13px;
-                }
-
-                VerticalBox {
-                    spacing: 10px;
-                    for gpu in gpus: Rectangle {
-                        height: 60px;
+            // 标题栏
+            Rectangle {
+                height: 46px;
+                HorizontalBox {
+                    spacing: 12px;
+                    Rectangle {
+                        width: 34px;
+                        height: 34px;
                         border-radius: 8px;
-                        background: #242a38;
+                        background: #37d3a3;
+                    }
+                    Text {
+                        text: "Windows 内存监控器";
+                        font-size: 24px;
+                        font-weight: 800;
+                        color: #e8ecf4;
+                        vertical-alignment: center;
+                    }
+                    // Text {
+                    //     text: "实时 · 精确 · 全维度";
+                    //     font-size: 13px;
+                    //     color: #5c6b84;
+                    //     vertical-alignment: center;
+                    // }
+                }
+            }
 
-                        VerticalBox {
-                            padding: 10px;
-                            spacing: 6px;
-                            Text {
-                                text: gpu.name;
-                                color: #e8ecf4;
-                                font-size: 13px;
-                                font-weight: 700;
-                            }
-                            PBar {
-                                percent: gpu.dedicated-usage;
-                                height: 8px;
-                            }
-                            Text {
-                                text: "专用显存 " + gpu.dedicated-used-text + " · 共享 " + gpu.shared-used-text;
-                                color: #8b95a7;
-                                font-size: 12px;
+            // 物理内存大卡片
+            Rectangle {
+                height: 180px;
+                background: #1a1f2b;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #2a3040;
+
+                HorizontalBox {
+                    padding: 20px;
+                    spacing: 28px;
+
+                    Rectangle {
+                        width: 130px;
+                        height: 130px;
+                        background: transparent;
+                        CircularProgress {
+                            progress: phys-usage / 100;
+                        }
+                    }
+
+                    VerticalBox {
+                        spacing: 8px;
+                        Text {
+                            text: "物理内存";
+                            color: #8b95a7;
+                            font-size: 14px;
+                        }
+                        Text {
+                            text: "已用 " + phys-used-text + " / 总量 " + phys-total-text;
+                            color: #e8ecf4;
+                            font-size: 26px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "可用 " + phys-avail-text;
+                            color: #8b95a7;
+                            font-size: 15px;
+                        }
+                        PBar {
+                            percent: phys-usage;
+                            height: 12px;
+                        }
+                    }
+                }
+            }
+
+            // 指标网格
+            GridLayout {
+                spacing: 16px;
+
+                Row {
+                    MetricCard {
+                        title: "已压缩内存";
+                        value-text: compressed-text;
+                        sub-text: "Memory Compression";
+                    }
+                    MetricCard {
+                        title: "提交内存";
+                        value-text: commit-text;
+                        sub-text: "Commit Charge";
+                        usage: commit-usage;
+                        show-progress: true;
+                    }
+                }
+                Row {
+                    MetricCard {
+                        title: "系统缓存";
+                        value-text: cache-text;
+                        sub-text: "System Cache";
+                    }
+                    MetricCard {
+                        title: "页面文件";
+                        value-text: virtual-text;
+                        sub-text: "Page File";
+                        usage: virtual-usage;
+                        show-progress: true;
+                    }
+                }
+                Row {
+                    MetricCard {
+                        title: "本进程工作集";
+                        value-text: proc-working-text;
+                        sub-text: "Working Set";
+                    }
+                    MetricCard {
+                        title: "本进程私有内存";
+                        value-text: proc-private-text;
+                        sub-text: "Private Memory";
+                    }
+                }
+            }
+
+            // 显存卡片
+            Rectangle {
+                background: #1a1f2b;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #2a3040;
+
+                VerticalBox {
+                    padding: 14px;
+                    spacing: 6px;
+
+                    Text {
+                        text: "显存 (GPU)";
+                        color: #8b95a7;
+                        font-size: 13px;
+                    }
+
+                    VerticalBox {
+                        spacing: 10px;
+                        for gpu in gpus: Rectangle {
+                            height: 60px;
+                            border-radius: 8px;
+                            background: #242a38;
+
+                            VerticalBox {
+                                padding: 10px;
+                                spacing: 6px;
+                                Text {
+                                    text: gpu.name;
+                                    color: #e8ecf4;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                }
+                                PBar {
+                                    percent: gpu.dedicated-usage;
+                                    height: 8px;
+                                }
+                                Text {
+                                    text: "专用显存 " + gpu.dedicated-used-text + " · 共享 " + gpu.shared-used-text;
+                                    color: #8b95a7;
+                                    font-size: 12px;
+                                }
                             }
                         }
                     }
                 }
             }
-        }
         }
     }
 }

@@ -17,4 +17,5 @@ windows = { version = "0.62.2", features = [
 ] }
 
 [build-dependencies]
+embed-resource = "3.0.11"
 slint-build = "1.17.1"

@@ -1,0 +1,2 @@
+// Windows 资源脚本：将 icon.ico 作为应用程序图标嵌入 EXE
+IDI_ICON1 ICON "icon.ico"
