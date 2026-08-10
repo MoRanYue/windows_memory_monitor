@@ -1,5 +1,9 @@
 # Windows 内存监控器
 
+<p align="center">
+  <img src="assets/logo.svg" alt="Windows 内存监控器 Logo" width="160">
+</p>
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 使用 **Rust + Slint** 编写的 Windows 11 实时内存监控器，精确监控物理内存、已压缩内存、虚拟内存、页面文件与显存占用。
