@@ -1,0 +1,16 @@
+# Rust / Cargo 构建产物
+/target
+
+# 本地技能配置
+.roo/
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时文件
+*.log
+build_tmp*
+screenshot.png
