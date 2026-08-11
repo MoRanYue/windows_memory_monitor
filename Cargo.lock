@@ -5682,7 +5682,7 @@ checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
 
 [[package]]
 name = "windows_memory_monitor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "embed-resource",

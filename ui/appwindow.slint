@@ -113,11 +113,8 @@ component MetricCard inherits Rectangle {
     border-radius: 10px;
     border-width: 1px;
     border-color: #2a3040;
-    // 令所有卡片首选宽度一致（0 → 完全按 GridLayout 均等 stretch 分配），
-    // 避免因内容宽度不同导致两侧列宽不一致
+    // min-width: 0px;
     preferred-width: 0px;
-    // 固定高度：内容 + 直方图最大约 146px，150px 预留余量；
-    // 显式 height 使卡片在 GridLayout 中不再随行高拉伸
     height: 150px;
 
     VerticalBox {
@@ -128,19 +125,26 @@ component MetricCard inherits Rectangle {
             text: title;
             color: #8b95a7;
             font-size: 13px;
+            horizontal-stretch: 1;
+            overflow: elide;
         }
         Text {
             text: value-text;
             color: #e8ecf4;
             font-size: 20px;
             font-weight: 700;
+            horizontal-stretch: 1;
+            overflow: elide;
         }
         Text {
             text: sub-text;
             color: #5c6b84;
             font-size: 12px;
+            horizontal-stretch: 1;
+            overflow: elide;
         }
-        if show-progress: PBar {
+        PBar {
+            visible: show-progress;
             percent: usage;
             height: 8px;
         }
@@ -283,51 +287,41 @@ export component AppWindow inherits Window {
             GridLayout {
                 spacing: 16px;
 
-                Row {
-                    MetricCard {
-                        title: "已压缩内存";
-                        value-text: compressed-text;
-                        sub-text: "Memory Compression";
-                        history: compressed-history;
-                    }
-                    MetricCard {
-                        title: "提交内存";
-                        value-text: commit-text;
-                        sub-text: "Commit Charge";
-                        usage: commit-usage;
-                        show-progress: true;
-                        history: commit-history;
-                    }
+                MetricCard {
+                    title: "已压缩内存";
+                    value-text: compressed-text;
+                    sub-text: "Memory Compression";
+                    history: compressed-history;
+                    // horizontal-stretch: 1;
                 }
-                Row {
-                    MetricCard {
-                        title: "系统缓存";
-                        value-text: cache-text;
-                        sub-text: "System Cache";
-                        history: cache-history;
-                    }
-                    MetricCard {
-                        title: "页面文件";
-                        value-text: virtual-text;
-                        sub-text: "Page File";
-                        usage: virtual-usage;
-                        show-progress: true;
-                        history: pagefile-history;
-                    }
+
+                MetricCard {
+                    title: "提交内存";
+                    value-text: commit-text;
+                    sub-text: "Commit Charge";
+                    usage: commit-usage;
+                    show-progress: true;
+                    history: commit-history;
+                    // horizontal-stretch: 1;
                 }
-                Row {
-                    MetricCard {
-                        title: "本进程工作集";
-                        value-text: proc-working-text;
-                        sub-text: "Working Set";
-                        history: working-history;
-                    }
-                    MetricCard {
-                        title: "本进程私有内存";
-                        value-text: proc-private-text;
-                        sub-text: "Private Memory";
-                        history: private-history;
-                    }
+
+                MetricCard {
+                    row: 1;
+                    title: "系统缓存";
+                    value-text: cache-text;
+                    sub-text: "System Cache";
+                    history: cache-history;
+                    // horizontal-stretch: 1;
+                }
+
+                MetricCard {
+                    title: "页面文件";
+                    value-text: virtual-text;
+                    sub-text: "Page File";
+                    usage: virtual-usage;
+                    show-progress: true;
+                    history: pagefile-history;
+                    // horizontal-stretch: 1;
                 }
             }
 
