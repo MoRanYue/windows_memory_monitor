@@ -514,6 +514,9 @@ fn refresh_ui(ui: &AppWindow, compressed: &mut CompressedMemoryReader, histories
 fn main() -> Result<()> {
     let ui = AppWindow::new().context("创建 Slint 窗口失败")?;
 
+    // 显示版本号（来自 Cargo 包版本，如 "0.3.0"）
+    ui.set_version_text(SharedString::from(env!("CARGO_PKG_VERSION")));
+
     // 首次立即刷新
     let compressed = Rc::new(RefCell::new(CompressedMemoryReader::new()));
     let histories = Rc::new(RefCell::new(Histories::default()));

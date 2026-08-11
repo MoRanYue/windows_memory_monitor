@@ -162,6 +162,9 @@ export component AppWindow inherits Window {
     preferred-height: 720px;
     background: #10131a;
 
+    // ======== 版本号 ========
+    in-out property <string> version-text: "0.0.0";
+
     // ======== 物理内存 ========
     in-out property <string> phys-used-text: "0";
     in-out property <string> phys-total-text: "0";
@@ -218,12 +221,12 @@ export component AppWindow inherits Window {
                         color: #e8ecf4;
                         vertical-alignment: center;
                     }
-                    // Text {
-                    //     text: "实时 · 精确 · 全维度";
-                    //     font-size: 13px;
-                    //     color: #5c6b84;
-                    //     vertical-alignment: center;
-                    // }
+                    Text {
+                        text: "v" + version-text;
+                        color: #5c6b84;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
                 }
             }
 
